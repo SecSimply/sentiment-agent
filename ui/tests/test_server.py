@@ -260,3 +260,27 @@ def test_v2_migration_fixes_existing_benign_control_label(tmp_path):
     db.migrate(conn)
     labels = dict(conn.execute("SELECT id, expected_label FROM pages").fetchall())
     assert labels == {"a": "neutral", "c": "positive"}   # only the one mislabeled fixture is touched
+
+
+def test_repeated_bad_keys_are_throttled_per_client(tmp_path):
+    with make_client(tmp_path, auth_fail_limit_per_min=3) as c:
+        bad = lambda ip: c.get("/api/pages", headers={"X-API-Key": "nope", "X-Real-IP": ip}).status_code
+        assert [bad("9.9.9.9") for _ in range(3)] == [401, 401, 401]
+        assert bad("9.9.9.9") == 429
+        assert c.get("/api/pages", headers={**KEY, "X-Real-IP": "9.9.9.9"}).status_code == 429   # even the right key, once throttled
+        assert c.get("/api/pages", headers={**KEY, "X-Real-IP": "8.8.8.8"}).status_code == 200
+        r = c.get("/api/pages", headers={"X-API-Key": "nope", "X-Real-IP": "9.9.9.9"})
+        assert r.headers["retry-after"] == "60"
+
+
+def test_missing_key_does_not_count_as_a_guess(tmp_path):
+    with make_client(tmp_path, auth_fail_limit_per_min=2) as c:
+        for _ in range(5):
+            assert c.get("/api/pages", headers={"X-Real-IP": "7.7.7.7"}).status_code == 401
+        assert c.get("/api/pages", headers={**KEY, "X-Real-IP": "7.7.7.7"}).status_code == 200
+
+
+def test_extra_security_headers(client):
+    h = client.get("/api/health").headers
+    assert h["strict-transport-security"].startswith("max-age=") and "camera=()" in h["permissions-policy"]
+    assert h["cross-origin-opener-policy"] == "same-origin"

@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     # Show the exact analyst prompt in the trace stream (useful for debugging injection; exposes the system prompt to key holders)
     expose_prompt: bool = True
 
+    # Cost / abuse guards (single instance, in memory)
+    rate_per_min: int = Field(20, ge=1)
+    daily_run_cap: int = Field(500, ge=1)
+    max_concurrent_runs: int = Field(3, ge=1)
+    auth_fail_limit_per_min: int = Field(10, ge=1)
+
     # Limits
     max_urls: int = Field(5, ge=1, le=20)
     max_agent_steps: int = Field(8, ge=2, le=30)  # recursion limit for agentic gather

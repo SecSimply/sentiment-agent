@@ -18,6 +18,7 @@ from starlette.background import BackgroundTask
 
 from . import db
 from .config import Settings, get_settings
+from .limits import AuthFailureLimiter, client_ip
 from .tokens import make_token, verify_token
 
 log = logging.getLogger("ui")
@@ -76,6 +77,7 @@ def create_app(settings: Settings | None = None, agent_transport: httpx.AsyncBas
     app = FastAPI(title="sentiment-ui", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.auth_cache = {}          # sha256(key) -> expiry
     app.state.runs = defaultdict(deque)  # sha256(key) -> recent run timestamps
+    app.state.auth_failures = AuthFailureLimiter(s.auth_fail_limit_per_min)
 
     # ---------- helpers ----------
     def get_db():
@@ -101,8 +103,10 @@ def create_app(settings: Settings | None = None, agent_transport: httpx.AsyncBas
             d["html"] = row["html"]
         return d
 
-    async def require_key(x_api_key: str | None = Header(None)) -> str:
+    async def require_key(request: Request, x_api_key: str | None = Header(None)) -> str:
         """Validates the key by asking the agent. The key is never stored, only a short-lived hash of a *valid* one."""
+        ip = client_ip(request)
+        app.state.auth_failures.check(ip)          # 429 after repeated bad attempts from one client
         if not x_api_key:
             raise HTTPException(401, "missing API key")
         h = hashlib.sha256(x_api_key.encode()).hexdigest()
@@ -113,6 +117,7 @@ def create_app(settings: Settings | None = None, agent_transport: httpx.AsyncBas
         except httpx.HTTPError:
             raise HTTPException(503, "agent unreachable")
         if r.status_code == 401:
+            app.state.auth_failures.record_failure(ip)
             raise HTTPException(401, "invalid API key")
         if r.status_code != 200:
             raise HTTPException(502, "agent error")
@@ -131,6 +136,9 @@ def create_app(settings: Settings | None = None, agent_transport: httpx.AsyncBas
         resp = await call_next(request)
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+        resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
         if request.url.path.startswith("/api/"):
             resp.headers.setdefault("Cache-Control", "no-store")
         if not request.url.path.startswith("/lab/"):

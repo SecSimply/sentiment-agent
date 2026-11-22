@@ -7,5 +7,6 @@ COPY app ./app
 RUN useradd -r app && chown -R app /app
 USER app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
-# Railway injects PORT. Bind IPv4 0.0.0.0: this service only receives public traffic (outbound private calls need no listener).
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Railway injects PORT. Bind `::` (dual-stack) so the service is reachable on Railway's IPv6 private network
+# (the UI calls it there; no public domain is needed).
+CMD ["sh", "-c", "uvicorn app.main:app --host :: --port ${PORT:-8000}"]

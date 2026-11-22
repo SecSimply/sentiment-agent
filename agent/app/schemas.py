@@ -8,7 +8,7 @@ Label = Literal["positive", "negative", "neutral", "mixed"]
 class AnalyzeRequest(BaseModel):
     """Provide `urls` (deterministic fetch) and/or `query` (agentic search via MCP tools)."""
 
-    urls: list[str] = Field(default_factory=list)
+    urls: list[str] = Field(default_factory=list, max_length=20)
     query: str | None = Field(None, max_length=300)
     subject: str | None = Field(None, max_length=200, description="What the sentiment is about")
 
