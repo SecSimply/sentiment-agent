@@ -47,13 +47,25 @@ export async function streamRun(key: string, input: RunInput, onEvent: (e: Trace
     try { const j = await res.json(); msg = typeof j.detail === 'string' ? j.detail : msg } catch { /* ignore */ }
     throw new ApiError(res.status, msg)
   }
+  let finished = false
   const parser = createSseParser((data) => {
-    try { onEvent(JSON.parse(data) as TraceEvent) } catch { /* ignore malformed frame */ }
+    try {
+      const ev = JSON.parse(data) as TraceEvent
+      if (ev.type === 'done') finished = true
+      onEvent(ev)
+    } catch { /* ignore malformed frame */ }
   })
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   for (;;) {
-    const { value, done } = await reader.read()
-    if (done) break
-    parser.push(value)
+    let chunk: ReadableStreamReadResult<string>
+    try { chunk = await reader.read() }
+    catch (x) {
+      if (x instanceof DOMException && x.name === 'AbortError') throw x
+      throw new ApiError(0, `The connection was interrupted while streaming (${x instanceof Error ? x.message : 'network error'}).`)
+    }
+    if (chunk.done) break
+    parser.push(chunk.value)
   }
+  // The agent always ends a run with a `done` event, so a stream that stops without one was cut off.
+  if (!finished) throw new ApiError(0, 'The stream ended before the analysis finished (the connection was closed early). Try again; if it keeps happening, check the browser console and network tab.')
 }

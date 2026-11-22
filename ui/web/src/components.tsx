@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { worst, type DocTrace, type TraceState } from './trace'
 import type { SentimentResult, Status } from './types'
 
@@ -31,10 +31,37 @@ export function CheckList({ checks }: { checks: CheckLike[] }) {
   return checks.length ? <ul className="checks">{checks.map((c, i) => <CheckRow key={c.id + i} c={c} />)}</ul> : null
 }
 
-function Section({ title, state, children }: { title: string; state?: 'start' | 'end'; children: React.ReactNode }) {
+/** Seconds since mount; ticks once a second while `active`. Shows that a silent step is still alive. */
+function Elapsed({ active }: { active: boolean }) {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    if (!active) return
+    const t = setInterval(() => setN((v) => v + 1), 1000)
+    return () => clearInterval(t)
+  }, [active])
+  return <>{n}s</>
+}
+
+export class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('UI render error', error, info.componentStack) }
+  render() {
+    if (!this.state.error) return this.props.children
+    return (
+      <div className="error" role="alert">
+        <strong>The page hit an error while rendering.</strong>
+        <pre>{this.state.error.message}{'\n'}{this.state.error.stack?.split('\n').slice(0, 6).join('\n')}</pre>
+        <button onClick={() => this.setState({ error: null })}>Try again</button>
+      </div>
+    )
+  }
+}
+
+function Section({ title, state, running = false, children }: { title: string; state?: 'start' | 'end'; running?: boolean; children: React.ReactNode }) {
   return (
     <section className="stage">
-      <h3>{title} {state === 'start' ? <span className="spin" aria-label="running">running…</span> : null}</h3>
+      <h3>{title} {state === 'start' && running ? <span className="spin" aria-label="running">running… <Elapsed active /></span> : state === 'start' ? <span className="muted">interrupted</span> : null}</h3>
       {children}
     </section>
   )
@@ -60,9 +87,10 @@ export function Trace({ t, running }: { t: TraceState; running: boolean }) {
   if (t.count === 0 && !running) return null
   return (
     <div className="trace">
+      {t.count === 0 ? <div className="muted" role="status">Connecting to the agent…</div> : null}
       {t.request.length > 0 && <Section title="1 · Request"><CheckList checks={t.request} /></Section>}
 
-      <Section title="2 · Gather" state={t.stages.gather}>
+      <Section title="2 · Gather" state={t.stages.gather} running={running}>
         {t.step ? <div className="muted">Agent step {t.step.step} of {t.step.limit} allowed</div> : null}
         <ul className="calls">
           {t.toolCalls.map((c) => (
@@ -70,7 +98,7 @@ export function Trace({ t, running }: { t: TraceState; running: boolean }) {
               <code>{c.tool}</code>
               <code className="args">{JSON.stringify(c.args)}</code>
               <span className="muted">
-                {c.status === 'running' ? 'running…' : `${c.status === 'ok' ? 'ok' : 'failed'} · ${c.ms} ms${c.status === 'ok' ? ` · ${c.nDocs} doc(s)` : ''}`}
+                {c.status === 'running' ? (running ? <>running… <Elapsed active /> (searching and fetching pages can take 10-20 s)</> : 'interrupted') : `${c.status === 'ok' ? 'ok' : 'failed'} · ${c.ms} ms${c.status === 'ok' ? ` · ${c.nDocs} doc(s)` : ''}`}
               </span>
             </li>
           ))}
@@ -80,7 +108,7 @@ export function Trace({ t, running }: { t: TraceState; running: boolean }) {
       </Section>
 
       {(t.stages.analyze || t.analyst.checks.length > 0) && (
-        <Section title="3 · Analyse" state={t.stages.analyze}>
+        <Section title="3 · Analyse" state={t.stages.analyze} running={running}>
           {t.analyst.config ? (
             <div className="muted mono">
               model {t.analyst.config.model} · tools bound: {t.analyst.config.tools_bound} · output: {t.analyst.config.structured_output} · temperature {t.analyst.config.temperature}

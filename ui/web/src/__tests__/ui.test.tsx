@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ConnectBar, ResultCard, Trace } from '../components'
+import { ConnectBar, ErrorBoundary, ResultCard, Trace } from '../components'
 import { streamRun } from '../api'
 import { useApiKey } from '../session'
 import { renderHook, act } from '@testing-library/react'
@@ -92,8 +92,33 @@ describe('streamRun', () => {
     expect(JSON.parse(init.body as string)).toEqual({ urls: ['u'], subject: 's' })
   })
 
+  it('reports a stream that ends without a done event instead of stopping silently', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(sseBody(['data: {"seq":1,"type":"stage","stage":"gather","status":"start"}\n\n']), { status: 200 })))
+    const got: TraceEvent[] = []
+    await expect(streamRun('K', { urls: ['u'] }, (e) => got.push(e), new AbortController().signal)).rejects.toThrow(/ended before the analysis finished/)
+    expect(got).toHaveLength(1)   // events received before the cut were still delivered
+  })
+
+  it('reports an interrupted connection', async () => {
+    const broken = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode('data: {"seq":1,"type":"stage","stage":"gather","status":"start"}\n\n')); c.error(new TypeError('network error')) } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(broken, { status: 200 })))
+    await expect(streamRun('K', { urls: ['u'] }, () => {}, new AbortController().signal)).rejects.toThrow(/interrupted/)
+  })
+
   it('surfaces HTTP errors with status', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: 'invalid API key' }), { status: 401 })))
     await expect(streamRun('K', { urls: [] }, () => {}, new AbortController().signal)).rejects.toMatchObject({ status: 401, message: 'invalid API key' })
+  })
+})
+
+
+describe('ErrorBoundary', () => {
+  it('shows the error instead of a blank page', () => {
+    const Boom = () => { throw new Error('kaboom ' + HOSTILE) }
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { container } = render(<ErrorBoundary><Boom /></ErrorBoundary>)
+    spy.mockRestore()
+    expect(screen.getByRole('alert')).toHaveTextContent('kaboom')
+    expect(container.querySelector('img,script')).toBeNull()
   })
 })
