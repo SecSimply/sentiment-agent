@@ -16,7 +16,14 @@ CATALOG: dict[str, dict[str, str]] = {
     "sanitize.extract": {"title": "Reduced to plain text", "defends": "Scripts, styles, templates, iframes, comments, meta and alt text never reach the model."},
     "sanitize.hidden_content": {"title": "Hidden content removed", "defends": "Instructions hidden from humans (display:none, aria-hidden, zero font size) but readable by a model."},
     "sanitize.control_chars": {"title": "Invisible characters stripped", "defends": "Zero-width, bidi and private-use characters used to smuggle or obfuscate instructions; Unicode is normalised (NFKC) first."},
-    "sanitize.injection_patterns": {"title": "Instruction-like text scan", "defends": "Text aimed at the model rather than the reader. Flagged so the analyst is warned; the content is kept, not silently rewritten."},
+    "sanitize.injection_patterns": {"title": "Instruction-like text scan", "defends": (
+        "Text aimed at the model rather than the reader. Flagged so the analyst is warned; the content is kept, not silently rewritten. "
+        "A regex tripwire: reliable on known phrasings, only about 40% on brand-new ones, so it complements (never replaces) the isolated, tool-less analyst. "
+        "Pattern IDs: override_instruction / multilingual_override (ignore or forget earlier instructions), persona_switch (you are now / developer mode), "
+        "new_instructions and task_hijack (replacement task), forced_label (output or rate it positive), forged_output (fake JSON or result lines), "
+        "many_shot_labels (repeated example labels), role_line / fake_role_header / chat_template_token / fake_delimiter (impersonating system or chat markup), "
+        "addresses_ai (talking to the model), authority_claim (claiming to be the developers), automation_directive (telling automated analysers what to say), "
+        "system_prompt_reference, tool_invocation. A prefix 'obfuscated:' means it only matched after undoing leetspeak, lookalike letters or letter spacing.")},
     "sanitize.truncate": {"title": "Length cap", "defends": "Context flooding and cost."},
     "search.snippet_only": {"title": "Fell back to search snippet", "defends": "A page that could not be fetched safely is replaced by its (sanitised) snippet."},
     "analyst.no_tools": {"title": "Analyst has no tools", "defends": "A poisoned document cannot trigger any action: the model that reads untrusted text has no tools bound."},
