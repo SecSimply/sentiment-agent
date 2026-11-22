@@ -49,6 +49,18 @@ def parse_tool_output(content: Any) -> list[dict]:
     return []
 
 
+def _dedupe(docs: list[dict]) -> list[dict]:
+    """Unique by URL, first occurrence wins. The graph (not the gatherer) applies the source limit,
+    so that what was collected vs what the analyst reads is reported in one place."""
+    seen: set = set()
+    out = []
+    for d in docs:
+        if d.get("source_url") not in seen:
+            seen.add(d.get("source_url"))
+            out.append(d)
+    return out
+
+
 def _scan(messages) -> tuple[list[dict], list[str]]:
     """Split ToolMessages into parsed documents and error texts."""
     docs: list[dict] = []
@@ -126,7 +138,7 @@ class McpGatherer:
             for d in got:
                 await emit_doc(emit, d)
             docs.extend(got)
-        return docs[: self._s.max_docs]
+        return _dedupe(docs)
 
     async def research(self, query: str, emit: Emit = noop_emit) -> list[dict]:
         """Agentic gather. The agent's own text is discarded; only structured tool results are kept.
@@ -184,4 +196,4 @@ class McpGatherer:
         if not docs and errors:
             log.error("gather tools failed: %s", errors[-1])
             raise SourceUnavailable(errors[-1])
-        return docs[: self._s.max_docs]
+        return _dedupe(docs)

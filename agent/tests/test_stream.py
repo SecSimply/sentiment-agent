@@ -233,5 +233,26 @@ async def test_research_stops_once_enough_sources_collected():
     q: asyncio.Queue = asyncio.Queue()
     docs = await McpGatherer(Settings(max_docs=4, max_agent_steps=25), LoopingModel(), tools=[search_news]).research("q", Emitter(q))
     assert n["i"] == 2 and LoopingModel.calls == 2          # 3 docs after call 1 (not enough), 6 after call 2 -> stop
-    assert len(docs) == 4
+    assert len(docs) == 6 and len({d["source_url"] for d in docs}) == 6   # everything collected, unique; the graph applies the limit
     assert any(e["type"] == "note" and "stopped searching" in e["message"] for e in collect(q))
+
+
+async def test_overlapping_search_results_are_deduplicated_and_selection_matches_what_was_shown():
+    """Regression: the trace once listed 13 docs, analysed 8, and reported 0 dropped."""
+    import json as j
+
+    @tool
+    def search_news(query: str) -> str:
+        """search"""
+        return j.dumps([{**DOC, "source_url": f"https://a.test/{k}"} for k in range(4)])   # same 4 URLs every call
+
+    LoopingModel.calls = 0
+    q: asyncio.Queue = asyncio.Queue()
+    s = Settings(max_docs=3, max_agent_steps=25)
+    g = build_graph(FakeLLM(), McpGatherer(s, LoopingModel(), tools=[search_news]), s)
+    await g.ainvoke({"request": AnalyzeRequest(query="q")}, config={"configurable": {"emit": Emitter(q)}})
+    evs = collect(q)
+    shown = {e["url"] for e in evs if e["type"] == "document"}
+    sel = next(e for e in evs if e["type"] == "doc_selection")
+    assert len(shown) == 4 and len(sel["kept"]) == 3 and len(sel["dropped"]) == 1
+    assert set(sel["kept"]) | set(sel["dropped"]) == shown       # nothing shown is unaccounted for
