@@ -8,15 +8,25 @@ using Microsoft.Extensions.Options;
 
 namespace FetchMcp.Sanitize;
 
-public sealed record SanitizedContent(string? Title, string? PublishedAt, string Text, SanitizationInfo Info);
+public sealed record SanitizedContent(string? Title, string? PublishedAt, string Text, SanitizationInfo Info, IReadOnlyList<Check> Checks);
 
 public sealed partial class Sanitizer(IOptions<FetchOptions> options)
 {
     private static readonly string[] DroppedTags =
         ["script", "style", "noscript", "template", "iframe", "object", "embed", "svg", "canvas", "form", "nav", "footer", "aside"];
 
-    [GeneratedRegex(@"ignore (all |any )?(previous|prior|above) (instructions|prompts?)|disregard (the )?(system|previous)|you are now|new instructions|system prompt|<\|?(system|assistant|im_start)|\[/?INST\]|(?m)^\s*(system|assistant)\s*:", RegexOptions.IgnoreCase)]
-    private static partial Regex InjectionPattern();
+    private const RegexOptions Rx = RegexOptions.IgnoreCase | RegexOptions.Compiled;
+
+    /// <summary>Named so the trace can say WHICH pattern matched without echoing page content.</summary>
+    public static readonly (string Id, Regex Pattern)[] InjectionPatterns =
+    [
+        ("override_instruction", new(@"ignore (all |any )?(previous|prior|above) (instructions|prompts?)|disregard (the )?(system|previous)", Rx)),
+        ("persona_switch", new(@"you are now", Rx)),
+        ("new_instructions", new(@"new instructions", Rx)),
+        ("system_prompt_reference", new(@"system prompt", Rx)),
+        ("chat_template_token", new(@"<\|?(system|assistant|im_start)|\[/?INST\]", Rx)),
+        ("role_line", new(@"^\s*(system|assistant)\s*:", Rx | RegexOptions.Multiline)),
+    ];
 
     [GeneratedRegex(@"[ \t\f\v]+")] private static partial Regex Spaces();
     [GeneratedRegex(@"\n{3,}")] private static partial Regex BlankLines();
@@ -24,30 +34,51 @@ public sealed partial class Sanitizer(IOptions<FetchOptions> options)
     public SanitizedContent Sanitize(string body, string contentType)
     {
         var flags = new List<string>();
+        var checks = new List<Check>();
         string? title = null, published = null;
         string text;
 
         if (contentType.Contains("html", StringComparison.OrdinalIgnoreCase))
-            (title, published, text) = ExtractHtml(body, flags);
+            (title, published, text) = ExtractHtml(body, flags, checks);
         else
+        {
             text = body;
+            checks.Add(new Check("sanitize.extract", CheckStatus.Pass, "plain text; no markup to parse"));
+        }
 
-        text = Normalize(text, flags);
+        text = NormalizeCounted(text, out var stripped);
+        if (stripped > 0)
+        {
+            flags.Add("control_chars_removed");
+            checks.Add(new Check("sanitize.control_chars", CheckStatus.Warn, $"stripped {stripped} invisible/control character(s) (zero-width, bidi, private-use)"));
+        }
+        else checks.Add(new Check("sanitize.control_chars", CheckStatus.Pass, "no invisible or control characters found"));
 
-        if (InjectionPattern().IsMatch(text)) flags.Add("possible_injection");
+        var matched = InjectionPatterns.Where(p => p.Pattern.IsMatch(text)).Select(p => p.Id).ToList();
+        if (matched.Count > 0)
+        {
+            flags.Add("possible_injection");
+            checks.Add(new Check("sanitize.injection_patterns", CheckStatus.Warn, $"instruction-like text matched: {string.Join(", ", matched)}. Flagged for the analyst, content kept"));
+        }
+        else checks.Add(new Check("sanitize.injection_patterns", CheckStatus.Pass, "no instruction-like patterns matched"));
 
         var max = options.Value.MaxChars;
         var truncated = text.Length > max;
-        if (truncated) text = text[..max];
+        if (truncated)
+        {
+            checks.Add(new Check("sanitize.truncate", CheckStatus.Warn, $"text cut from {text.Length} to {max} characters"));
+            text = text[..max];
+        }
+        else checks.Add(new Check("sanitize.truncate", CheckStatus.Pass, $"{text.Length} characters (limit {max})"));
 
-        return new SanitizedContent(
-            title is null ? null : Normalize(title, flags)[..Math.Min(300, Normalize(title, flags).Length)],
-            published,
-            text,
-            new SanitizationInfo(truncated, flags.Distinct().ToList()));
+        var cleanTitle = title is null ? null : Normalize(title, []);
+        if (cleanTitle is { Length: > 300 }) cleanTitle = cleanTitle[..300];
+
+        return new SanitizedContent(cleanTitle, published, text,
+            new SanitizationInfo(truncated, flags.Distinct().ToList()), checks);
     }
 
-    private static (string? Title, string? Published, string Text) ExtractHtml(string html, List<string> flags)
+    private static (string? Title, string? Published, string Text) ExtractHtml(string html, List<string> flags, List<Check> checks)
     {
         var doc = new HtmlParser().ParseDocument(html);
 
@@ -55,7 +86,10 @@ public sealed partial class Sanitizer(IOptions<FetchOptions> options)
                         ?? doc.QuerySelector("time[datetime]")?.GetAttribute("datetime");
         var title = doc.Title;
 
-        foreach (var el in doc.QuerySelectorAll(string.Join(",", DroppedTags)).ToList()) el.Remove();
+        var dropped = doc.QuerySelectorAll(string.Join(",", DroppedTags)).ToList();
+        foreach (var el in dropped) el.Remove();
+        checks.Add(new Check("sanitize.extract", CheckStatus.Pass,
+            $"HTML reduced to text; dropped {dropped.Count} non-content element(s) (script/style/template/iframe/…); comments, meta and alt text ignored"));
 
         var hidden = 0;
         foreach (var el in doc.QuerySelectorAll("[hidden],[aria-hidden='true'],[style]").ToList())
@@ -69,7 +103,12 @@ public sealed partial class Sanitizer(IOptions<FetchOptions> options)
                 hidden++;
             }
         }
-        if (hidden > 0) flags.Add("hidden_content_removed");
+        if (hidden > 0)
+        {
+            flags.Add("hidden_content_removed");
+            checks.Add(new Check("sanitize.hidden_content", CheckStatus.Warn, $"removed {hidden} element(s) hidden from human readers"));
+        }
+        else checks.Add(new Check("sanitize.hidden_content", CheckStatus.Pass, "no hidden elements found"));
 
         IElement? root = doc.QuerySelector("article") ?? doc.QuerySelector("main") ?? doc.Body;
         // Insert newlines around block elements so paragraphs survive TextContent.
@@ -81,9 +120,16 @@ public sealed partial class Sanitizer(IOptions<FetchOptions> options)
 
     public static string Normalize(string input, List<string> flags)
     {
+        var s = NormalizeCounted(input, out var stripped);
+        if (stripped > 0) flags.Add("control_chars_removed");
+        return s;
+    }
+
+    private static string NormalizeCounted(string input, out int stripped)
+    {
         var s = input.Normalize(NormalizationForm.FormKC);
         var sb = new StringBuilder(s.Length);
-        var stripped = false;
+        stripped = 0;
         foreach (var rune in s.EnumerateRunes())
         {
             var cat = Rune.GetUnicodeCategory(rune);
@@ -91,12 +137,11 @@ public sealed partial class Sanitizer(IOptions<FetchOptions> options)
             if (cat is UnicodeCategory.Format or UnicodeCategory.PrivateUse or UnicodeCategory.OtherNotAssigned
                 || (cat == UnicodeCategory.Control && rune.Value is not ('\n' or '\t')))
             {
-                stripped = true;
+                stripped++;
                 continue;
             }
             sb.Append(rune.ToString());
         }
-        if (stripped) flags.Add("control_chars_removed");
 
         var t = sb.ToString().Replace("\r", "");
         t = Spaces().Replace(t, " ");

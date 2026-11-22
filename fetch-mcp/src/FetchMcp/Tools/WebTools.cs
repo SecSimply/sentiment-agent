@@ -15,7 +15,7 @@ public sealed class WebTools(IPageFetcher fetcher, NewsSearchService search, ILo
     public async Task<PageDoc> FetchPage([Description("Absolute http(s) URL")] string url, CancellationToken ct)
     {
         try { return await fetcher.FetchAsync(url, ct); }
-        catch (FetchRefusedException ex) { throw new McpException(ex.Message); }
+        catch (FetchRefusedException ex) { throw new McpException($"[{ex.Code}] {ex.Message}"); }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
             log.LogWarning(ex, "fetch failed for {Url}", url);
@@ -32,7 +32,7 @@ public sealed class WebTools(IPageFetcher fetcher, NewsSearchService search, ILo
     {
         if (!search.IsConfigured) throw new McpException("search_news is not configured.");
         try { return await search.SearchAsync(query, maxResults, ct); }
-        catch (FetchRefusedException ex) { throw new McpException(ex.Message); }
+        catch (FetchRefusedException ex) { throw new McpException($"[{ex.Code}] {ex.Message}"); }
         catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or OperationCanceledException)
         {
             log.LogWarning(ex, "search failed");

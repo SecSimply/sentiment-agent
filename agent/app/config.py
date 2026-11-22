@@ -19,11 +19,19 @@ class Settings(BaseSettings):
     # Inbound auth for this API
     agent_api_key: SecretStr = SecretStr("")
 
+    # Show the exact analyst prompt in the trace stream (useful for debugging injection; exposes the system prompt to key holders)
+    expose_prompt: bool = True
+
     # Limits
     max_urls: int = Field(5, ge=1, le=20)
     max_agent_steps: int = Field(8, ge=2, le=30)  # recursion limit for agentic gather
     max_docs: int = Field(10, ge=1, le=50)
     max_chars_per_doc: int = 8000  # extra clamp before prompting
+
+    @property
+    def fetch_base_url(self) -> str:
+        """Base URL of the fetch service (for its plain-HTTP lab endpoint), derived from the MCP URL."""
+        return self.mcp_url.rsplit("/mcp", 1)[0]
 
 
 @lru_cache

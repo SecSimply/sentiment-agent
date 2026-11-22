@@ -58,8 +58,25 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
+// Authenticated plain-HTTP helper for the injection lab. Pure function (no network), and deliberately NOT an MCP
+// tool so the model can never call it.
+app.MapPost("/lab/sanitize", [Microsoft.AspNetCore.Mvc.RequestSizeLimit(300_000)] (LabSanitizeRequest req, Sanitizer sanitizer) =>
+{
+    if (string.IsNullOrEmpty(req.Html) || req.Html.Length > 200_000) return Results.BadRequest(new { error = "html must be 1..200000 characters" });
+    var r = sanitizer.Sanitize(req.Html, "text/html");
+    return Results.Ok(new LabSanitizeResponse(r.Title, r.PublishedAt, r.Text, r.Info, r.Checks));
+});
+
 app.MapMcp("/mcp");
 
 app.Run();
+
+public sealed record LabSanitizeRequest([property: System.Text.Json.Serialization.JsonPropertyName("html")] string Html);
+public sealed record LabSanitizeResponse(
+    [property: System.Text.Json.Serialization.JsonPropertyName("title")] string? Title,
+    [property: System.Text.Json.Serialization.JsonPropertyName("published_at")] string? PublishedAt,
+    [property: System.Text.Json.Serialization.JsonPropertyName("text")] string Text,
+    [property: System.Text.Json.Serialization.JsonPropertyName("sanitization")] FetchMcp.Models.SanitizationInfo Sanitization,
+    [property: System.Text.Json.Serialization.JsonPropertyName("checks")] IReadOnlyList<FetchMcp.Models.Check> Checks);
 
 public partial class Program;

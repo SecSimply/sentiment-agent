@@ -46,3 +46,7 @@ class DocumentMeta(BaseModel):
 class AnalyzeResponse(BaseModel):
     result: SentimentResult
     documents: list[DocumentMeta]
+
+
+class SanitizePreviewRequest(BaseModel):
+    html: str = Field(min_length=1, max_length=200_000)

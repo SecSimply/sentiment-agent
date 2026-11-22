@@ -28,10 +28,10 @@ class FakeGatherer:
     def __init__(self, docs):
         self.docs = docs
 
-    async def fetch_urls(self, urls):
+    async def fetch_urls(self, urls, emit=None):
         return list(self.docs)
 
-    async def research(self, query):
+    async def research(self, query, emit=None):
         return list(self.docs)
 
 

@@ -20,7 +20,7 @@ public sealed class NewsSearchService(
         var so = searchOptions.Value;
         var flags = new List<string>();
         query = Sanitizer.Normalize(query ?? "", flags).Replace('\n', ' ');
-        if (query.Length == 0 || query.Length > so.MaxQueryLength) throw new FetchRefusedException("Invalid query.");
+        if (query.Length == 0 || query.Length > so.MaxQueryLength) throw new FetchRefusedException("Invalid query.", "search.invalid_query");
 
         var count = Math.Clamp(maxResults, 1, fetchOptions.Value.MaxSearchResults);
         var hits = (await provider.SearchAsync(query, count, ct))
@@ -49,17 +49,23 @@ public sealed class NewsSearchService(
         catch (Exception ex) when (ex is FetchRefusedException or HttpRequestException
                                    || (ex is OperationCanceledException && !ct.IsCancellationRequested))
         {
-            return Snippet(hit);
+            var code = ex is FetchRefusedException fr ? fr.Code : "fetch.failed";
+            return Snippet(hit, code);
         }
     }
 
-    private PageDoc Snippet(SearchHit hit)
+    private PageDoc Snippet(SearchHit hit, string reason)
     {
         var uri = new Uri(hit.Url);
         var clean = sanitizer.Sanitize($"{hit.Title}\n{hit.Description}".Trim(), "text/plain");
         var flags = clean.Info.Flags.Append("snippet_only").Distinct().ToList();
         var title = hit.Title is null ? null : Sanitizer.Normalize(hit.Title, []);
+        var checks = new List<Check>
+        {
+            new("search.snippet_only", CheckStatus.Warn, $"page could not be fetched ({reason}); using the search snippet instead"),
+        };
+        checks.AddRange(clean.Checks);
         return new PageDoc(uri.ToString(), uri.Host, title, hit.PublishedAt, clean.Text, clock.GetUtcNow(),
-            clean.Info with { Flags = flags });
+            clean.Info with { Flags = flags }, checks);
     }
 }

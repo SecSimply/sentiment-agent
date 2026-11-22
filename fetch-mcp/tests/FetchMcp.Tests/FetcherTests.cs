@@ -25,9 +25,16 @@ public class FetcherTests
 
     [Theory]
     [InlineData("http://127.0.0.1:9/")] [InlineData("http://169.254.169.254/latest/meta-data/")]
-    [InlineData("http://[::1]:9/")] [InlineData("http://localhost:9/")] [InlineData("http://fetch-mcp.railway.internal/")]
-    public async Task Blocks_internal_destinations(string url) =>
-        await Assert.ThrowsAsync<HttpRequestException>(() => Make().FetchAsync(url, default));
+    [InlineData("http://[::1]:9/")] [InlineData("http://localhost:9/")]
+    public async Task Blocks_internal_destinations(string url)
+    {
+        var ex = await Assert.ThrowsAsync<FetchRefusedException>(() => Make().FetchAsync(url, default));
+        Assert.Equal("ssrf.dns_ip", ex.Code);
+    }
+
+    [Fact]  // does not resolve outside Railway: fails at DNS, which is also a refusal to connect
+    public async Task Unresolvable_internal_hostname_fails() =>
+        await Assert.ThrowsAsync<HttpRequestException>(() => Make().FetchAsync("http://fetch-mcp.railway.internal/", default));
 
     [Fact]
     public async Task Enforces_domain_allowlist() =>
