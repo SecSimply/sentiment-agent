@@ -53,3 +53,6 @@ table { width: 100%; border-collapse: collapse; font-size: .85rem; } th, td { te
 .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } @media (max-width: 860px) { .panes { grid-template-columns: 1fr; } }
 .human { width: 100%; height: 320px; border: 1px solid var(--line); border-radius: 6px; background: #fff; } .out { min-height: 80px; }
 .verdict { padding: 10px 14px; border-radius: 8px; font-weight: 600; margin: 8px 0; } .verdict.pass { background: var(--pass-bg); color: var(--pass); } .verdict.fail { background: var(--block-bg); color: var(--block); }
+
+.brow.pass td:first-child { color: var(--pass); } .brow.fail td:first-child, .brow.error td:first-child { color: var(--block); } .brow:hover { background: var(--bg); }
+.chip.dim { background: var(--line); color: var(--muted); }

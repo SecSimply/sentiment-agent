@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { api } from './api'
+import { BatchView } from './BatchView'
 import { ConnectBar } from './components'
 import { LabView } from './LabView'
 import { ResearchView } from './ResearchView'
@@ -7,7 +8,7 @@ import { useApiKey } from './session'
 
 export default function App() {
   const [key, setKey] = useApiKey()
-  const [tab, setTab] = useState<'research' | 'lab'>('research')
+  const [tab, setTab] = useState<'research' | 'lab' | 'batch'>('research')
   const [notice, setNotice] = useState('')
   const onAuthError = useCallback(() => { setKey(''); setNotice('The API key was rejected. Please reconnect.') }, [setKey])
 
@@ -23,8 +24,9 @@ export default function App() {
           <nav role="tablist">
             <button role="tab" aria-selected={tab === 'research'} onClick={() => setTab('research')}>Research</button>
             <button role="tab" aria-selected={tab === 'lab'} onClick={() => setTab('lab')}>Injection lab</button>
+            <button role="tab" aria-selected={tab === 'batch'} onClick={() => setTab('batch')}>Batch test</button>
           </nav>
-          {tab === 'research' ? <ResearchView apiKey={key} onAuthError={onAuthError} /> : <LabView apiKey={key} onAuthError={onAuthError} />}
+          {tab === 'research' ? <ResearchView apiKey={key} onAuthError={onAuthError} /> : tab === 'lab' ? <LabView apiKey={key} onAuthError={onAuthError} /> : <BatchView apiKey={key} onAuthError={onAuthError} />}
         </>
       ) : <p className="muted">Enter the agent API key to start. It is kept in this tab’s session storage only.</p>}
     </div>

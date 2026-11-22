@@ -11,6 +11,7 @@ export interface DocumentEv extends Base { type: 'document'; url: string; domain
 export interface AnalystConfigEv extends Base { type: 'analyst_config'; model: string; tools_bound: number; structured_output: string; temperature: number }
 export interface AnalystPromptEv extends Base { type: 'analyst_prompt'; system: string; user: string }
 export interface AgentStepEv extends Base { type: 'agent_step'; step: number; limit: number }
+export interface DocSelectionEv extends Base { type: 'doc_selection'; kept: string[]; dropped: string[]; limit: number }
 export interface NoteEv extends Base { type: 'note'; message: string }
 export interface ErrorEv extends Base { type: 'error'; code: string; message: string }
 export interface DoneEv extends Base { type: 'done' }
@@ -25,7 +26,7 @@ export interface ResultEv extends Base { type: 'result'; result: SentimentResult
 
 export type TraceEvent =
   | CheckEv | StageEv | ToolCallEv | ToolResultEv | DocumentEv | AnalystConfigEv
-  | AnalystPromptEv | AgentStepEv | NoteEv | ErrorEv | DoneEv | ResultEv
+  | AnalystPromptEv | AgentStepEv | DocSelectionEv | NoteEv | ErrorEv | DoneEv | ResultEv
 
 export interface Page {
   id: string; name: string; technique: string; expected_label: Label; notes: string

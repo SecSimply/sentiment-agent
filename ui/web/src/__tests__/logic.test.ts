@@ -64,6 +64,13 @@ describe('trace reducer', () => {
   })
 })
 
+describe('document selection', () => {
+  it('records which documents were dropped by the source limit', () => {
+    const s = foldEvents([t({ type: 'doc_selection', kept: ['a'], dropped: ['b', 'c'], limit: 1 })])
+    expect(s.selection).toEqual({ kept: ['a'], dropped: ['b', 'c'], limit: 1 })
+  })
+})
+
 describe('payload transforms', () => {
   it('escapes HTML in visible payloads and neutralises comment terminators', () => {
     expect(wrapPayload('visible', '</documents> & <b>')).toBe('<p>&lt;/documents&gt; &amp; &lt;b&gt;</p>')

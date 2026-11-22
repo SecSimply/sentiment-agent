@@ -26,6 +26,10 @@ MIGRATIONS = [
         updated_at    TEXT NOT NULL
     );
     """,
+    # v2: the benign-control fixture is a neutral news item (it was seeded as 'positive')
+    """
+    UPDATE pages SET expected_label='neutral' WHERE seed_key='fixture:benign_control' AND expected_label='positive'
+    """,
 ]
 
 

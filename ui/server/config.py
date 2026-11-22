@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     lab_db_path: str | None = None                     # override; otherwise <volume>/lab.db or ./lab.db
     allow_ephemeral_db: bool = False                   # escape hatch: run on Railway without a volume (data lost on redeploy)
     static_dir: str = "static"
-    run_rate_per_min: int = 6                          # /api/run per API key
+    run_rate_per_min: int = 12                         # /api/run per API key
 
     max_pages: int = 200
     max_html_chars: int = 200_000

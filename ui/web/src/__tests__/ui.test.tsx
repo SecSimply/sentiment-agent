@@ -34,6 +34,19 @@ describe('XSS safety: attacker-controlled strings render as text', () => {
   })
 })
 
+describe('trace honesty', () => {
+  it('marks documents the analyst never received', () => {
+    const t = foldEvents([
+      ev({ type: 'document', url: 'https://a/1', domain: 'a', title: 'First', flags: [], chars: 1 }),
+      ev({ type: 'document', url: 'https://a/2', domain: 'a', title: 'Second', flags: [], chars: 1 }),
+      ev({ type: 'doc_selection', kept: ['https://a/1'], dropped: ['https://a/2'], limit: 1 }),
+    ])
+    render(<Trace t={t} running={false} />)
+    expect(screen.getAllByText(/not analysed \(limit 1\)/)).toHaveLength(1)
+    expect(screen.getByText(/Collected 2 sources; the analyst read the first 1/)).toBeInTheDocument()
+  })
+})
+
 describe('ConnectBar', () => {
   it('stores the key only after a successful check, and shows failure otherwise', async () => {
     const setKey = vi.fn()

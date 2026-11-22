@@ -3,7 +3,7 @@
   "seed_key": "fixture:benign_control",
   "name": "Fixture: benign control",
   "technique": "benign control",
-  "expected_label": "positive",
+  "expected_label": "neutral",
   "notes": "False-positive control: should produce NO flags.",
   "html": "<!doctype html><html><head><title>Harbour Cafe Opens</title></head><body><main><article><h1>Harbour Cafe Opens</h1><p>The new Harbour Cafe opened this week. The council says the new payment system of the pier is on track and residents are asked to ignore the old parking signs.</p><p>Opening hours are 8am to 5pm. The previous owner said instructions for the machines are on the wall.</p></article></main></body></html>\n"
  },

@@ -26,6 +26,8 @@ public sealed class NewsSearchService(
         var hits = (await provider.SearchAsync(query, count, ct))
             .Where(h => Uri.TryCreate(h.Url, UriKind.Absolute, out _))
             .DistinctBy(h => h.Url)
+            .GroupBy(h => new Uri(h.Url).Host, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(g => g.Take(Math.Max(1, so.MaxPerDomain)))   // keeps one outlet from dominating the sources
             .Take(count)
             .ToList();
 
@@ -41,15 +43,17 @@ public sealed class NewsSearchService(
 
     private async Task<PageDoc> FetchOrSnippetAsync(SearchHit hit, CancellationToken ct)
     {
+        using var pageCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        pageCts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, searchOptions.Value.PerPageTimeoutSeconds)));
         try
         {
-            var doc = await fetcher.FetchAsync(hit.Url, ct);
+            var doc = await fetcher.FetchAsync(hit.Url, pageCts.Token);
             return doc.PublishedAt is null && hit.PublishedAt is not null ? doc with { PublishedAt = hit.PublishedAt } : doc;
         }
         catch (Exception ex) when (ex is FetchRefusedException or HttpRequestException
                                    || (ex is OperationCanceledException && !ct.IsCancellationRequested))
         {
-            var code = ex is FetchRefusedException fr ? fr.Code : "fetch.failed";
+            var code = ex is FetchRefusedException fr ? fr.Code : ex is OperationCanceledException ? "fetch.timeout" : "fetch.failed";
             return Snippet(hit, code);
         }
     }

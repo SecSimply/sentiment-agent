@@ -202,3 +202,36 @@ def test_sanitize_preview_upstream_failure_is_502(client):
     c, main = client
     main.app.state.fetch_http = httpx.AsyncClient(base_url="http://fetch", transport=httpx.MockTransport(lambda r: httpx.Response(500)))
     assert c.post("/lab/sanitize-preview", json={"html": "x"}, headers=H).status_code == 502
+
+
+async def test_graph_reports_which_docs_were_dropped_by_the_limit():
+    class ManyDocs(DocGatherer):
+        async def fetch_urls(self, urls, emit=None):
+            return [{**DOC, "source_url": f"https://a.test/{i}"} for i in range(5)]
+
+    q: asyncio.Queue = asyncio.Queue()
+    s = Settings(max_docs=3)
+    g = build_graph(FakeLLM(), ManyDocs(), s)
+    await g.ainvoke({"request": AnalyzeRequest(urls=["https://a.test/x"])}, config={"configurable": {"emit": Emitter(q)}})
+    evs = collect(q)
+    sel = next(e for e in evs if e["type"] == "doc_selection")
+    assert len(sel["kept"]) == 3 and sel["dropped"] == ["https://a.test/3", "https://a.test/4"] and sel["limit"] == 3
+    assert next(e for e in evs if e.get("id") == "analyst.untrusted_wrapper")["detail"].startswith("3 document(s)")
+
+
+async def test_research_stops_once_enough_sources_collected():
+    import json as j
+    n = {"i": 0}
+
+    @tool
+    def search_news(query: str) -> str:
+        """search"""
+        n["i"] += 1
+        return j.dumps([{**DOC, "source_url": f"https://a.test/{n['i']}-{k}"} for k in range(3)])
+
+    LoopingModel.calls = 0
+    q: asyncio.Queue = asyncio.Queue()
+    docs = await McpGatherer(Settings(max_docs=4, max_agent_steps=25), LoopingModel(), tools=[search_news]).research("q", Emitter(q))
+    assert n["i"] == 2 and LoopingModel.calls == 2          # 3 docs after call 1 (not enough), 6 after call 2 -> stop
+    assert len(docs) == 4
+    assert any(e["type"] == "note" and "stopped searching" in e["message"] for e in collect(q))

@@ -17,6 +17,7 @@ export interface TraceState {
   analyst: { config?: { model: string; tools_bound: number; structured_output: string; temperature: number }; checks: CheckEv[]; prompt?: { system: string; user: string } }
   output: CheckEv[]
   notes: string[]
+  selection?: { kept: string[]; dropped: string[]; limit: number }
   step?: { step: number; limit: number }
   result?: { result: SentimentResult; documents: DocumentMeta[] }
   error?: { code: string; message: string }
@@ -69,6 +70,7 @@ export function applyEvent(prev: TraceState, ev: TraceEvent): TraceState {
     case 'analyst_config': s.analyst.config = { model: ev.model, tools_bound: ev.tools_bound, structured_output: ev.structured_output, temperature: ev.temperature }; break
     case 'analyst_prompt': s.analyst.prompt = { system: ev.system, user: ev.user }; break
     case 'agent_step': s.step = { step: ev.step, limit: ev.limit }; break
+    case 'doc_selection': s.selection = { kept: ev.kept, dropped: ev.dropped, limit: ev.limit }; break
     case 'note': s.notes.push(ev.message); break
     case 'result': s.result = { result: ev.result, documents: ev.documents }; break
     case 'error': s.error = { code: ev.code, message: ev.message }; break

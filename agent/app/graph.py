@@ -37,8 +37,12 @@ def build_graph(llm: BaseChatModel, gatherer: Gatherer, settings: Settings):
             if d.get("source_url") not in seen:
                 seen.add(d.get("source_url"))
                 unique.append(d)
-        await emit("stage", stage="gather", status="end", n_docs=len(unique))
-        return {"docs": unique[: settings.max_docs]}
+        kept = unique[: settings.max_docs]
+        # Be explicit about what the analyst will (not) read, so the trace never overstates it.
+        await emit("doc_selection", kept=[d.get("source_url") for d in kept],
+                   dropped=[d.get("source_url") for d in unique[settings.max_docs:]], limit=settings.max_docs)
+        await emit("stage", stage="gather", status="end", n_docs=len(kept))
+        return {"docs": kept}
 
     async def analyze(state: State, config: RunnableConfig) -> State:
         emit = get_emit(config)

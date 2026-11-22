@@ -90,6 +90,44 @@ public class SearchTests
         Assert.Single(r);
     }
 
+    [Fact]
+    public async Task Caps_results_per_domain_keeping_order()
+    {
+        var prov = new FakeProvider(
+            new SearchHit("https://a.test/1", null, null, null), new SearchHit("https://a.test/2", null, null, null), new SearchHit("https://a.test/3", null, null, null),
+            new SearchHit("https://b.test/1", null, null, null));
+        var r = await Svc(prov, new FakeFetcher(u => Doc(u))).SearchAsync("q", 10, default);
+        Assert.Equal(["https://a.test/1", "https://a.test/2", "https://b.test/1"], r.Select(d => d.SourceUrl));
+    }
+
+    private sealed class HangingFetcher : IPageFetcher
+    {
+        public async Task<PageDoc> FetchAsync(string url, CancellationToken ct) { await Task.Delay(Timeout.Infinite, ct); return null!; }
+    }
+
+    [Fact]
+    public async Task Slow_pages_fall_back_to_snippet_quickly()
+    {
+        var fo = Options.Create(new FetchOptions());
+        var svc = new NewsSearchService(new FakeProvider(new SearchHit("https://slow.test/1", "T", "snippet text", null)), new HangingFetcher(),
+            new Sanitizer(fo), fo, Options.Create(new SearchOptions { PerPageTimeoutSeconds = 1 }), TimeProvider.System);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var d = Assert.Single(await svc.SearchAsync("q", 5, default));
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(4));
+        Assert.Contains("snippet_only", d.Sanitization.Flags);
+        Assert.Contains("fetch.timeout", d.Checks!.Single(c => c.Id == "search.snippet_only").Detail);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_is_not_swallowed_as_a_timeout()
+    {
+        var fo = Options.Create(new FetchOptions());
+        var svc = new NewsSearchService(new FakeProvider(new SearchHit("https://slow.test/1", "T", "s", null)), new HangingFetcher(),
+            new Sanitizer(fo), fo, Options.Create(new SearchOptions()), TimeProvider.System);
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => svc.SearchAsync("q", 5, cts.Token));
+    }
+
     [Theory]
     [InlineData("")] [InlineData("   ")]
     public async Task Rejects_empty_query(string q) =>

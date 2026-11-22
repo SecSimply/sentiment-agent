@@ -36,7 +36,7 @@ pages, payloads = [], []
 for f in sorted(FIX.glob("*.html")):
     tech, note = FIXTURE_NOTES[f.stem]
     pages.append({"seed_key": f"fixture:{f.stem}", "name": f"Fixture: {f.stem.replace('_', ' ')}", "technique": tech,
-                  "expected_label": "positive" if f.stem == "benign_control" else "negative", "notes": note,
+                  "expected_label": "neutral" if f.stem == "benign_control" else "negative", "notes": note,
                   "html": f.read_text()})
 
 for line in CASES.read_text().splitlines():

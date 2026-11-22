@@ -94,9 +94,9 @@ def test_seeds_loaded_and_idempotent(client, tmp_path):
 def test_migrate_sets_user_version_and_is_noop_second_time(tmp_path):
     conn = db.connect(tmp_path / "m.db")
     db.migrate(conn)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
     db.migrate(conn)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 
 
@@ -250,3 +250,13 @@ def test_spa_served_and_api_paths_not_swallowed(tmp_path):
         assert c.get("/assets/a.js").text == "1"
         assert c.get("/api/nonexistent").status_code == 404
         assert c.get("/../../etc/passwd").status_code in (200, 404) and "root:" not in c.get("/..%2f..%2fetc/passwd").text
+
+
+def test_v2_migration_fixes_existing_benign_control_label(tmp_path):
+    conn = db.connect(tmp_path / "old.db")
+    conn.execute("BEGIN"); conn.execute(db.MIGRATIONS[0].split(";")[0]); conn.execute("PRAGMA user_version=1"); conn.execute("COMMIT")
+    conn.execute("INSERT INTO pages (id,name,html,expected_label,seed_key,created_at,updated_at) VALUES ('a','b','h','positive','fixture:benign_control','t','t')")
+    conn.execute("INSERT INTO pages (id,name,html,expected_label,seed_key,created_at,updated_at) VALUES ('c','d','h','positive','case:i01','t','t')")
+    db.migrate(conn)
+    labels = dict(conn.execute("SELECT id, expected_label FROM pages").fetchall())
+    assert labels == {"a": "neutral", "c": "positive"}   # only the one mislabeled fixture is touched

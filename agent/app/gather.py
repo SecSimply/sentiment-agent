@@ -172,6 +172,10 @@ class McpGatherer:
                 # Stop on the first error if nothing was collected, or once errors repeat.
                 if errors and (not docs or len(errors) >= 2):
                     break
+                # Stop once there are enough distinct sources: more searching only costs time and tokens.
+                if len({d.get("source_url") for d in docs}) >= self._s.max_docs:
+                    await emit("note", message=f"collected {self._s.max_docs} sources; stopped searching")
+                    break
         except GraphRecursionError:
             log.warning("agentic gather hit the step limit; using documents collected so far")
             await emit("note", message="step limit reached; analysing the documents collected so far")

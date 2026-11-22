@@ -67,7 +67,7 @@ function Section({ title, state, running = false, children }: { title: string; s
   )
 }
 
-function DocCard({ d }: { d: DocTrace }) {
+function DocCard({ d, notAnalysed, limit }: { d: DocTrace; notAnalysed: boolean; limit?: number }) {
   const status = worst(d.checks)
   return (
     <details className={`doc ${status}`} open={d.blocked || status === 'warn'}>
@@ -76,6 +76,7 @@ function DocCard({ d }: { d: DocTrace }) {
         <span className="doc-title">{d.title || d.domain || d.url}</span>
         <span className="muted"> {d.domain ?? ''}</span>
         {d.flags.map((f) => <span key={f} className="chip">{f}</span>)}
+        {notAnalysed ? <span className="chip dim" title="Fetched and checked, but over the per-run source limit, so the analyst never saw it">not analysed (limit {limit})</span> : null}
       </summary>
       <div className="muted mono">{d.url}</div>
       <CheckList checks={d.checks} />
@@ -103,7 +104,8 @@ export function Trace({ t, running }: { t: TraceState; running: boolean }) {
             </li>
           ))}
         </ul>
-        {t.docs.map((d) => <DocCard key={d.url} d={d} />)}
+        {t.docs.map((d) => <DocCard key={d.url} d={d} notAnalysed={!!t.selection?.dropped.includes(d.url)} limit={t.selection?.limit} />)}
+        {t.selection && t.selection.dropped.length > 0 ? <div className="note">Collected {t.selection.kept.length + t.selection.dropped.length} sources; the analyst read the first {t.selection.kept.length} (limit {t.selection.limit}).</div> : null}
         {t.notes.map((n, i) => <div key={i} className="note">{n}</div>)}
       </Section>
 
