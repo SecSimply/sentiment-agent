@@ -32,9 +32,12 @@ public class FetcherTests
         Assert.Equal("ssrf.dns_ip", ex.Code);
     }
 
-    [Fact]  // does not resolve outside Railway: fails at DNS, which is also a refusal to connect
-    public async Task Unresolvable_internal_hostname_fails() =>
-        await Assert.ThrowsAsync<HttpRequestException>(() => Make().FetchAsync("http://fetch-mcp.railway.internal/", default));
+    [Fact]  // does not resolve outside Railway. Slow or failed DNS must end in a failure, never a fetch
+    public async Task Unresolvable_internal_hostname_fails_without_fetching()
+    {
+        var ex = await Record.ExceptionAsync(() => Make(new FetchOptions { TimeoutSeconds = 2 }).FetchAsync("http://fetch-mcp.railway.internal/", default));
+        Assert.True(ex is HttpRequestException or OperationCanceledException, $"unexpected: {ex?.GetType().Name ?? "no exception"}");
+    }
 
     [Fact]
     public async Task Enforces_domain_allowlist() =>
