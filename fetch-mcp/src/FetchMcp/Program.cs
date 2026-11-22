@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using FetchMcp;
 using FetchMcp.Net;
+using FetchMcp.Search;
 using FetchMcp.Sanitize;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,7 +14,20 @@ if (Environment.GetEnvironmentVariable("PORT") is { Length: > 0 } port)
 builder.Services.Configure<FetchOptions>(builder.Configuration.GetSection("Fetch"));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<Sanitizer>();
-builder.Services.AddTransient<PageFetcher>();
+builder.Services.AddTransient<IPageFetcher, PageFetcher>();
+
+builder.Services.Configure<SearchOptions>(o =>
+{
+    builder.Configuration.GetSection("Search").Bind(o);
+    if (builder.Configuration["BRAVE_API_KEY"] is { Length: > 0 } key) o.ApiKey = key;
+});
+// Fixed, trusted API host: normal handler (result URLs are fetched via the SSRF-guarded "safe" client instead).
+builder.Services.AddHttpClient<ISearchProvider, BraveSearchProvider>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(10);
+    c.MaxResponseContentBufferSize = 1024 * 1024;
+});
+builder.Services.AddTransient<NewsSearchService>();
 builder.Services.AddHttpClient(PageFetcher.ClientName)
     .ConfigurePrimaryHttpMessageHandler(() => SafeHttp.CreateHandler());
 

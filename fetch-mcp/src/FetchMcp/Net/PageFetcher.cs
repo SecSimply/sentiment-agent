@@ -7,7 +7,12 @@ namespace FetchMcp.Net;
 
 public sealed class FetchRefusedException(string message) : Exception(message);
 
-public sealed class PageFetcher(IHttpClientFactory httpFactory, Sanitizer sanitizer, IOptions<FetchOptions> options, TimeProvider clock)
+public interface IPageFetcher
+{
+    Task<PageDoc> FetchAsync(string url, CancellationToken ct);
+}
+
+public sealed class PageFetcher(IHttpClientFactory httpFactory, Sanitizer sanitizer, IOptions<FetchOptions> options, TimeProvider clock) : IPageFetcher
 {
     public const string ClientName = "safe";
     private static readonly string[] AllowedTypes = ["text/html", "text/plain", "application/json", "application/xml", "text/xml", "application/xhtml+xml", "application/rss+xml", "application/atom+xml"];
