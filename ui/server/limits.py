@@ -1,7 +1,10 @@
+import logging
 import time
 from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
+
+log = logging.getLogger(__name__)
 
 
 def client_ip(request: Request) -> str:
@@ -32,4 +35,7 @@ class AuthFailureLimiter:
             raise HTTPException(429, "too many failed attempts; wait a minute", headers={"Retry-After": "60"})
 
     def record_failure(self, ip: str) -> None:
-        self._trim(ip).append(self.clock())
+        q = self._trim(ip)
+        q.append(self.clock())
+        if len(q) == self.limit:   # log the transition once; the client address only, never any key material
+            log.warning("auth throttle engaged for client %s", ip)
