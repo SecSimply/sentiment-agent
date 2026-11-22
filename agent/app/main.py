@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from langchain_deepseek import ChatDeepSeek
 
 from .config import Settings, get_settings
-from .gather import McpGatherer
+from .gather import McpGatherer, SourceUnavailable
 from .graph import build_graph, to_response
 from .schemas import AnalyzeRequest, AnalyzeResponse
 
@@ -50,6 +50,8 @@ async def healthz():
 async def analyze(req: AnalyzeRequest):
     try:
         state = await app.state.graph.ainvoke({"request": req})
+    except SourceUnavailable as exc:
+        raise HTTPException(503, "Document retrieval failed: a source tool is unavailable or not configured") from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
